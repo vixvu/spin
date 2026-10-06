@@ -127,6 +127,18 @@
   .saved .count { color: var(--muted); font-size: .85rem; white-space: nowrap; }
   .saved button { padding: 5px 10px; font-size: .9rem; }
   .status { color: var(--muted); font-size: .8rem; }
+  .popup {
+    position: absolute; top: 50%; left: 50%; width: 78%; z-index: 4;
+    transform: translate(-50%, -50%); border-radius: 22px; padding: 22px 18px;
+    text-align: center; cursor: pointer; border: 4px solid #fff;
+    box-shadow: 0 12px 40px rgba(0,0,0,.5); animation: pop .4s cubic-bezier(.2,1.4,.4,1);
+  }
+  .popup[hidden] { display: none; }
+  @keyframes pop { from { transform: translate(-50%, -50%) scale(.55); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+  .pop-label { font-weight: 600; font-size: clamp(.8rem, 2.6vw, 1rem); text-transform: uppercase; letter-spacing: .14em; opacity: .85; }
+  .pop-name { font-family: var(--display); font-weight: 800; font-size: clamp(1.5rem, 7vw, 3rem); line-height: 1.1; overflow-wrap: anywhere; margin-top: 4px; }
+  .pop-hint { font-size: .8rem; opacity: .75; margin-top: 10px; }
+  html.overlay .pop-hint { display: none; }
   /* ---- OBS / overlay mode: add ?overlay=1 to the URL ---- */
   html.overlay, html.overlay body { background: transparent !important; overflow: hidden; }
   html.overlay { --reserve: 170px; padding: 0; }
@@ -143,7 +155,7 @@
   html.overlay canvas { cursor: pointer; }
   html.overlay .result { background: rgba(17,19,29,.88); border-color: transparent; color: #fff; min-height: 70px; }
   html.overlay .result .label { color: #c5cbe6; }
-  @media (prefers-reduced-motion: reduce) { .pointer.tick { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .pointer.tick, .popup { animation: none; } }
 </style>
 </head>
 <body>
@@ -157,6 +169,11 @@
         <circle cx="18" cy="14" r="5" fill="var(--panel)"/>
       </svg>
       <button class="hub" id="spinBtn" type="button">Spin</button>
+      <div class="popup" id="popup" role="status" hidden>
+        <div class="pop-label">Winner</div>
+        <div class="pop-name" id="popName"></div>
+        <div class="pop-hint">Tap to close</div>
+      </div>
     </div>
     <div class="result" id="result" aria-live="polite">
       <div class="label">Press Spin to pick one.</div>
@@ -240,6 +257,7 @@
   var state = load();
   var params = new URLSearchParams(location.search);
   var OVERLAY = params.get("overlay") === "1";
+  var POPUP_ON = true, POPUP_SECS = 0, popupTimer = null;
   if (OVERLAY) {
     var root = document.documentElement;
     root.classList.add("overlay");
@@ -253,6 +271,9 @@
     state.removeWinner = params.get("remove") === "1";
     state.sound = params.get("sound") !== "0";
     state.history = [];
+    POPUP_ON = params.get("popup") !== "0";
+    var ps = parseInt(params.get("popupseconds"), 10);
+    POPUP_SECS = (ps >= 2 && ps <= 60) ? ps : 8;
   }
   var rotation = 0, spinning = false, lastTickIdx = -1, audio = null;
 
@@ -356,9 +377,25 @@
     } catch (e) {}
   }
 
+  function hidePopup() {
+    clearTimeout(popupTimer);
+    $("popup").hidden = true;
+  }
+  function showPopup(name, color) {
+    if (!POPUP_ON) return;
+    var pop = $("popup");
+    clearTimeout(popupTimer);
+    pop.style.background = color;
+    pop.style.color = textOn(color);
+    $("popName").textContent = name;
+    pop.hidden = true; void pop.offsetWidth; pop.hidden = false; // restart animation
+    if (POPUP_SECS) popupTimer = setTimeout(hidePopup, POPUP_SECS * 1000);
+  }
+
   function spin() {
     var list = items(), n = list.length;
     if (spinning || n === 0) return;
+    hidePopup();
     spinning = true; $("spinBtn").disabled = true;
     var TAU = Math.PI * 2, seg = TAU / n;
     var winner = Math.floor(Math.random() * n);
@@ -385,6 +422,7 @@
   }
 
   function finish(name, idx) {
+    var winColor = colorFor(idx, items().length);
     spinning = false; $("spinBtn").disabled = false;
     state.history.unshift(name); state.history = state.history.slice(0, 20);
     var box = $("result");
@@ -405,6 +443,7 @@
       draw();
     }
     save(); renderHistory();
+    showPopup(name, winColor);
   }
 
   function renderHistory() {
@@ -553,6 +592,8 @@
     } catch (e) { /* stay on browser storage */ }
   })();
 
+  $("popup").addEventListener("click", hidePopup);
+  window.addEventListener("keydown", function (e) { if (e.key === "Escape") hidePopup(); });
   if (OVERLAY) {
     canvas.addEventListener("click", spin);
     window.addEventListener("keydown", function (e) {
