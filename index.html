@@ -127,6 +127,22 @@
   .saved .count { color: var(--muted); font-size: .85rem; white-space: nowrap; }
   .saved button { padding: 5px 10px; font-size: .9rem; }
   .status { color: var(--muted); font-size: .8rem; }
+  /* ---- OBS / overlay mode: add ?overlay=1 to the URL ---- */
+  html.overlay, html.overlay body { background: transparent !important; overflow: hidden; }
+  html.overlay { --reserve: 170px; padding: 0; }
+  html.overlay.no-result { --reserve: 80px; }
+  html.overlay.no-title { --reserve: 100px; }
+  html.overlay.no-title.no-result { --reserve: 16px; }
+  html.overlay main { display: block; max-width: none; padding: 8px; }
+  html.overlay .panel, html.overlay .no-ov { display: none !important; }
+  html.overlay h1 { color: #fff; text-shadow: 0 2px 6px rgba(0,0,0,.7); margin-bottom: 8px; }
+  html.overlay.no-title h1 { display: none; }
+  html.overlay.no-result .result { display: none; }
+  html.overlay.no-hub .hub { display: none; }
+  html.overlay .wheel-wrap { max-width: none; width: min(100%, calc(100vh - var(--reserve))); }
+  html.overlay canvas { cursor: pointer; }
+  html.overlay .result { background: rgba(17,19,29,.88); border-color: transparent; color: #fff; min-height: 70px; }
+  html.overlay .result .label { color: #c5cbe6; }
   @media (prefers-reduced-motion: reduce) { .pointer.tick { animation: none; } }
 </style>
 </head>
@@ -222,6 +238,22 @@
   var $ = function (id) { return document.getElementById(id); };
   var canvas = $("wheel"), ctx = canvas.getContext("2d");
   var state = load();
+  var params = new URLSearchParams(location.search);
+  var OVERLAY = params.get("overlay") === "1";
+  if (OVERLAY) {
+    var root = document.documentElement;
+    root.classList.add("overlay");
+    if (params.get("title") === "0") root.classList.add("no-title");
+    if (params.get("result") === "0") root.classList.add("no-result");
+    if (params.get("hub") === "0") root.classList.add("no-hub");
+    var pi = parseInt(params.get("preset"), 10);
+    if (pi >= 1 && pi <= PRESETS.length) { state.title = PRESETS[pi - 1].title; state.options = PRESETS[pi - 1].options.join("\n"); }
+    var secs = parseInt(params.get("seconds"), 10);
+    if (secs >= 2 && secs <= 12) state.dur = secs;
+    state.removeWinner = params.get("remove") === "1";
+    state.sound = params.get("sound") !== "0";
+    state.history = [];
+  }
   var rotation = 0, spinning = false, lastTickIdx = -1, audio = null;
 
   function load() {
@@ -234,6 +266,7 @@
     return out;
   }
   function save() {
+    if (OVERLAY) return;
     try { localStorage.setItem("spinwheel-v1", JSON.stringify(state)); } catch (e) {}
   }
   function items() {
@@ -497,7 +530,7 @@
 
   (async function connectSync() {
     try {
-      if (!window.claude || !window.claude.use) return;
+      if (OVERLAY || !window.claude || !window.claude.use) return;
       var db = await window.claude.use("db");
       var user = await window.claude.use("user");
       if (!db || !user) return;
@@ -520,6 +553,12 @@
     } catch (e) { /* stay on browser storage */ }
   })();
 
+  if (OVERLAY) {
+    canvas.addEventListener("click", spin);
+    window.addEventListener("keydown", function (e) {
+      if (e.code === "Space") { e.preventDefault(); spin(); }
+    });
+  }
   if (window.ResizeObserver) new ResizeObserver(resize).observe($("wrap")); else window.addEventListener("resize", resize);
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw);
